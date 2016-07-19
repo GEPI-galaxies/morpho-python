@@ -1,0 +1,102 @@
+import matplotlib.pyplot as plt
+from scipy import interpolate
+import numpy as np
+from astropy.io import fits ## contains function like getdata, getval, getheader
+
+from functions import *
+
+
+def write_rhalf(step, filename, rhalf = [], objname = ""):
+
+    if step == "init":
+        file=open(filename,"w")
+        file.write('# name \t Rhalf_CG[kpc] \t Rhalf_CG[pixel] \t Rhalf_Sex[kpc] \t Rhalf_Sex[pixel] \n')
+        file.close()
+
+    if step == "add_line":
+        file=open(filename, "a")
+        file.write(objname)
+        file.write('\t')
+        file.write('%8.3f' % rhalf[0])
+        file.write('\t')
+        file.write('%8.3f' % rhalf[1])
+        file.write('\t')
+        file.write('%8.3f' % rhalf[2])
+        file.write('\t')
+        file.write('%8.3f' % rhalf[3])
+        file.write('\n')
+        file.close
+
+
+def make_rhalf(galfiles, rhalf_fig = ""):
+
+    """ utilisation de galfiles car lecture de parametres dans le header de objfile => a modifier plus rendre l'utilisation plus large """
+
+    print("Rhalf calculation")
+
+    im=fits.getdata(galfiles.objfile)
+    header=fits.getheader(galfiles.objfile)
+    seg=fits.getdata(galfiles.segfile)
+    
+    # check for existence 
+    if 'XCENTER' in header:
+        Xc=float(header['XCENTER'])
+    if 'YCENTER' in header:
+        Yc=float(header['YCENTER'])
+    if 'ELONG' in header:
+        E=float(header['ELONG'])
+    if 'PA' in header:
+        PA=float(header['PA'])
+    if 'RADIUS' in header:
+        RADIUS=float(header['RADIUS'])
+    if 'FLUXTOT' in header:
+        FLUXTOT=float(header['FLUXTOT'])
+    
+    ## appel de la fonction rhalf, image,Xc,Yc,E,PA  ==> gestion du cas ou les parametres n'ont pas ete lus dans le header ?
+    ny,nx=im.shape[0],im.shape[1] 
+    
+    # subtract sky level (IDL -> procedure sky ... equivalent in python ?)
+    im_mean=np.mean(im[np.where(seg==0)])
+    im_sub=im-im_mean
+
+    ell=mask_ellipse(ny,nx,Yc,Xc,E,PA)
+    #fits.writeto('mask_ellipse.fits', ell)
+   
+    flux_ram=np.zeros(nx/2,dtype=np.float)
+    rr=np.arange(nx/2,dtype=np.float)+1
+
+    lim=int(np.floor(nx/2.))
+    ## possibilite de changer cette limite par defaut
+    for k in np.arange(lim):
+        if True in (ell <= rr[k]):
+            index=np.where(ell <= rr[k])
+            flux_ram[k]=im_sub[index].sum()
+  
+    deriv_flux=np.gradient(flux_ram)
+    seuil=0.1*(np.max(flux_ram)-np.min(flux_ram))/100.
+    
+    plateau=np.median(flux_ram[np.where(deriv_flux < seuil)])
+    interpfunc = interpolate.interp1d(flux_ram,rr, kind='linear')
+    r_tot=interpfunc(plateau)
+    interpfunc = interpolate.interp1d(rr,flux_ram, kind='linear')
+    flux_tot=interpfunc(r_tot)
+    interpfunc = interpolate.interp1d(flux_ram,rr, kind='linear')
+    half_radius1=interpfunc(flux_tot/2.)
+    half_radius2=interpfunc(FLUXTOT/2.)
+
+    if len(rhalf_fig) != 0:
+        plt.plot(rr,flux_ram,color='k')
+        plt.plot(np.arange(nx/2),np.repeat(flux_tot,nx/2),color='r',linestyle='--')
+        plt.plot(np.arange(nx/2),np.repeat(flux_tot/2.,nx/2),color='b',linestyle='--')
+        plt.plot(np.repeat(half_radius1,2),np.linspace(0,flux_tot/2.,2),color='b',linestyle='--')
+
+        plt.plot(np.arange(nx/2),np.repeat(FLUXTOT,nx/2),color='c',linestyle='-.')
+        plt.plot(np.arange(nx/2),np.repeat(FLUXTOT/2.,nx/2),color='c',linestyle='-.')
+        plt.plot(np.repeat(half_radius2,2),np.linspace(0,FLUXTOT/2.,2),color='c',linestyle='-.')
+        plt.xlabel("Ellipse radius [pix]")
+        plt.ylabel("Cumulative flux")
+        plt.savefig(rhalf_fig)      
+        
+    return half_radius1,half_radius2
+
+

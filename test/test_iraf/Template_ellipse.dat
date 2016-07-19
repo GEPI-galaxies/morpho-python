@@ -1,0 +1,7 @@
+display $FILE_IN  1 
+ellipse  $FILE_IN  $FILE_ELLIPSE x0=$XCENTER y0=$YCENTER step=1 linear=yes xylearn=no recente=$recente_FLAG mag0=$mag0
+isoimap  $FILE_IN  $FILE_ELLIPSE
+tproject $FILE_ELLIPSE $FILE_TMP 'SMA,INTENS,INT_ERR,ELLIP,ELLIP_ERR, PA, PA_ERR, X0, Y0, TFLUX_C, TMAG_E,NPIX_E'
+tprint $FILE_TMP pwidth=200 > $FILE_DAT
+del $FILE_TMP 
+

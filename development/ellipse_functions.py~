@@ -1,0 +1,210 @@
+### developpement progressif
+### niveau 1 : execution automatique avec des parametres par defaut
+### niveau 2 : interaction avec l'utilisateur : verification, possibilite de changer les parametres
+
+
+from pyraf import iraf
+from subprocess import Popen,PIPE
+import time
+from astropy.io import ascii
+import numpy as np
+from functions import *
+
+
+def ellipse_iraf0(objname, file_in, path_out, zp, step="guess"):
+
+    if step=="guess":
+        file_cl = path_out + objname + "_guess.cl"
+        file_tab = path_out + objname + "_ellipse_Guess.tab"
+        file_dat = path_out + objname + "_ellipse_Guess.dat"
+    elif step=="final":
+        file_cl = path_out + objname + "_ellipse.cl"
+        file_tab = path_out + objname + "_ellipse.tab"
+        file_dat = path_out + objname + "_ellipse.dat"
+        file_guess = path_out + objname + "_ellipse_Guess.dat"
+
+    file_tmp = path_out + objname + "_temp.fits"
+    
+    Cmd_FileIN="s%$FILE_IN%"+file_in+"%"
+    Cmd_FileEllipse="s%$FILE_ELLIPSE%"+file_tab+"%"
+    Cmd_FileTmp="s%$FILE_TMP%"+file_tmp+"%"
+    Cmd_FileFinal="s%$FILE_DAT%"+file_dat+"%"
+    Cmd_mag0="s%$mag0%"+str(zp)+"%"
+
+    if step=="guess":
+        Cmd_X0="s%$XCENTER%INDEF%"
+        Cmd_Y0="s%$YCENTER%INDEF%"
+        Cmd_centerFlag="s%$recente_FLAG%yes%"
+    elif step=="final":
+        table=ascii.read(file_guess,Reader=ascii.NoHeader,names=['row','sma','Int','Int_err','E', 'E_err', 'PA', 'PA_err', 'Xc', 'Yc', 'Tflux', 'Tmag', 'Npix'])
+
+        centerX = str(np.mean(table['Xc']))
+        centerY = str(np.mean(table['Yc']))
+
+        Cmd_X0="s%$XCENTER%"+centerX+"%"
+        Cmd_Y0="s%$YCENTER%"+centerY+"%"
+        Cmd_centerFlag="s%$recente_FLAG%no%"
+        
+    f=open("script_sed","w")
+    f.write(Cmd_FileIN+"\n")
+    f.write(Cmd_FileEllipse+"\n")
+    f.write(Cmd_FileTmp+"\n")
+    f.write(Cmd_FileFinal+"\n")
+    f.write(Cmd_X0+"\n")
+    f.write(Cmd_Y0+"\n")
+    f.write(Cmd_mag0+"\n")
+    f.write(Cmd_centerFlag+"\n")
+    f.close()
+
+    f=open("script_shell","w")
+    f.write("#!/bin/bash \n")
+    f.write("sed -f script_sed < Template_ellipse.dat > "+file_cl+"\n")
+    f.write("chmod 755 "+file_cl+"\n")
+    f.close()
+
+    p=Popen(["sh script_shell"],shell=True) 
+    p.wait()
+
+
+def set_iraf_param(ellipse_par):
+
+    iraf.geompar.ellip0 = ellipse_par["geom"]["ellip0"]
+    iraf.geompar.pa0 = ellipse_par["geom"]["pa0"]
+    iraf.geompar.sma0 = ellipse_par["geom"]["sma0"]
+    iraf.geompar.minsma = ellipse_par["geom"]["minsma"]
+    iraf.geompar.maxsma = ellipse_par["geom"]["maxsma"]
+    iraf.geompar.step = ellipse_par["geom"]["step"]
+    iraf.geompar.linear = ellipse_par["geom"]["linear"]
+    iraf.geompar.xylearn = ellipse_par["geom"]["xylearn"]
+    iraf.geompar.physical = ellipse_par["geom"]["physical"]
+    iraf.geompar.maxrit = ellipse_par["geom"]["maxrit"]
+    
+    iraf.geompar.x0 = ellipse_par["geom"]["X0"]
+    iraf.geompar.y0 = ellipse_par["geom"]["Y0"]
+    iraf.geompar.recenter = ellipse_par["geom"]["recenter"]
+
+    iraf.isoimap.image = ellipse_par["isoimap"]["image"]
+    iraf.isoimap.table = ellipse_par["isoimap"]["table"]
+    iraf.isoimap.frame = ellipse_par["isoimap"]["frame"]
+    iraf.isoimap.nlevels = ellipse_par["isoimap"]["nlevels"]
+    iraf.isoimap.minsma = ellipse_par["isoimap"]["minsma"]
+    iraf.isoimap.maxsma = ellipse_par["isoimap"]["maxsma"]
+    iraf.isoimap.fulltab = ellipse_par["isoimap"]["fulltable"]
+    iraf.isoimap.color = ellipse_par["isoimap"]["color"]
+
+
+def ellipse_iraf(objname, file_in, path_out, zp, step="guess", **ellipse_par):
+ 
+    file_tab = path_out + objname + "_ellipse_Guess.tab"
+    file_dat = path_out + objname + "_ellipse_Guess.dat"
+
+    if step == "guess":
+        file_tab = path_out + objname + "_ellipse_Guess.tab"
+        file_dat = path_out + objname + "_ellipse_Guess.dat"
+
+        ellipse_par["geom"]["X0"] = "INDEF"
+        ellipse_par["geom"]["Y0"] = "INDEF"
+        ellipse_par["geom"]["recenter"] = "yes"
+
+    elif step == "final":
+        file_tab = path_out + objname + "_ellipse.tab"
+        file_dat = path_out + objname + "_ellipse.dat"
+        file_guess = path_out + objname + "_ellipse_Guess.dat"
+
+        print(file_guess)
+        ## reading the results of guess file
+        table=ascii.read(file_guess,Reader=ascii.NoHeader,names=['row','sma','Int','Int_err','E', 'E_err', 'PA', 'PA_err', 'Xc', 'Yc', 'Tflux', 'Tmag', 'Npix'])
+
+        centerX = str(np.mean(table['Xc']))
+        centerY = str(np.mean(table['Yc']))
+
+        ellipse_par["geom"]["X0"] = str(centerX)
+        ellipse_par["geom"]["Y0"] = str(centerY)
+        ellipse_par["geom"]["recenter"] = "no"
+
+    
+    run_ell(file_in, file_tab, file_dat, zp, **ellipse_par)
+
+
+def run_ell(file_in, file_tab, file_dat, mag, **ellipse_par):    
+
+    # prochaine etape : mettre en argument sous une certaine forme les parametres associes epar des taches 1) strict minimum sous forme de dico fixe 2) tout pouvoir changer sous forme de dictionnaire et tester les cles ...
+
+    # import iraf packages
+ 
+    iraf.stsdas()
+    iraf.analysis()
+    iraf.isophote()
+
+    p = Popen("ds9", shell = True)
+    time.sleep(5)
+
+    iraf.display(file_in, 1)  
+
+    set_iraf_param(ellipse_par)
+
+    # iraf.lpar(iraf.geompar)
+
+    iraf.ellipse(file_in, file_tab, mag0 = str(mag), verbose = "no")
+    
+    # iraf.lpar(iraf.isoimap)
+    
+    iraf.isoimap(file_in, file_tab)
+
+    iraf.tproject(file_tab, "temp.fits", "SMA,INTENS,INT_ERR,ELLIP,ELLIP_ERR, PA, PA_ERR, X0, Y0, TFLUX_C, TMAG_E,NPIX_E")
+    
+    iraf.tprint("temp.fits", pwidth = 200, Stdout = file_dat)
+    
+    iraf.imdel("temp.fits")
+
+    p.kill()
+
+
+def SB_profile(file_dat, file_profile, zp, pixscale, redshift, save_plot = "", cosmo_dimming = False):
+
+
+    # reading the output from ellipse
+
+    table = np.transpose(np.genfromtxt(file_dat, dtype=str))
+    table[table == "INDEF"] = "-999."
+    table = np.float32(table)
+
+    sma = table[1]
+    intens = table[2]
+    intens_err = table[3]
+    e = table[4]
+    e_err = table[5]
+    pa = table[6]
+    pa_err = table[7]
+    xc = table[8]
+    yc = table[9]
+
+    pa_err[pa_err == -999.] = 0.
+    e_err[e_err == -999.] = 0.
+    intens_err[intens_err == -999.] = 0
+
+    # convert pix into kpc
+    x_kpc = [0] * len(sma)
+    #print(x_kpc)
+    
+    #for l in np.arange(len(x_kpc)):
+    #    x_kpc[l] = pix2kpc(pixscale, redshift, sma[l])
+    #print(x_kpc)
+
+    # convert flux into surface brightness
+    #sb = intens
+    #sb_err = intens_err
+    #sb = np.where((sb != -999.), -2.5*np.log10(sb) + zp + 2.5*np.log10(pixscale**2), sb)
+    sb = -2.5*np.log10(intens) + zp + 2.5*np.log10(pixscale**2)
+    sb_low = -2.5*np.log10(intens - intens_err) + zp + 2.5*np.log10(pixscale**2)
+    sb_high = -2.5*np.log10(intens + intens_err) + zp + 2.5*np.log10(pixscale**2)
+
+    # correcting for dimming if asked
+
+    # write output file
+    
+    # plot
+
+#def PA_E_FromEllipse():
+    
+    

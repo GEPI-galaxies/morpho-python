@@ -1,0 +1,44 @@
+ellipse_par = {}
+
+ellipse_par["geom"] = {}
+ellipse_par["isoimap"] = {}
+
+ellipse_par["geom"]["X0"] = "INDEF" initial isophote center X
+ellipse_par["geom"]["Y0"] = "INDEF" initial isophote center Y
+ellipse_par["geom"]["ellip0"] = "0.2" initial ellipticity
+ellipse_par["geom"]["pa0"] = "0.0"  initial position angle (degrees)
+ellipse_par["geom"]["sma0"] = "10.0" initial semi-major axis lenght
+ellipse_par["geom"]["minsma"] 
+ellipse_par["geom"]["maxsma"] 
+ellipse_par["geom"]["step"] 
+ellipse_par["geom"]["linear"]
+ellipse_par["geom"]["maxrit"] = "INDEF"
+ellipse_par["geom"]["recenter"] = "yes"
+ellipse_par["geom"]["xylearn"] = "yes"
+ellipse_par["geom"]["physical"] = "yes"
+
+
+
+(x0 = 250.052225914)  initial isophote center X
+          (y0 = 249.650531561)  initial isophote center Y
+      (ellip0 = 0.2)            initial ellipticity
+         (pa0 = 0.0)            initial position angle (degrees)
+        (sma0 = 10.0)           initial semi-major axis lenght
+      (minsma = 0.0)            minimum semi-major axis lenght
+      (maxsma = 300.0)          maximum semi-major axis lenght
+        (step = 1.0)            sma step between successive ellipses
+      (linear = yes)            linear sma step ?
+      (maxrit = INDEF)          maximum sma lenght for iterative mode
+    (recenter = no)             allows finding routine to re-center x0-y0 ?
+     (xylearn = no)             updates pset with new x0-y0 ?
+    (physical = yes)            physical coordinate system ?
+        (mode = "al")           
+        image = ""              input image
+        table = ""              input table
+   (fulltable = yes)            use full range of `SMA' from table ?
+      (minsma = 1.0)            minimum semi-major axis
+      (maxsma = 300.0)          maximum semi-major axis
+     (nlevels = 50)             number of levels
+       (color = "b")            overlay color
+       (frame = 1)              image display frame
+        (mode = "al")           

@@ -1,0 +1,153 @@
+from astropy.io import fits ## contains function like getdata, getval, getheader
+import numpy as np
+from subprocess import Popen,PIPE
+from os import path
+
+from functions import *
+
+def modify_param(file, key, value):
+    """ function to modifie the value of one parameter in a sextractor configuration file """
+    
+    void_str = str() 
+    f = open(file, "r")   # open the file
+    
+    lines = f.readlines() # read the lines stored in a list
+    
+    for index, l in enumerate(lines):  # index=line number and l is the line
+        if l.startswith(key):          # find the line corresponding to the parameter to be changed
+            
+            list = l.split('#')        # line splitted using the # as the separator and each part sored as elements of a list
+
+            append_to_keep = '# '+list[-1]  # save the part after # (comment)
+            part_to_modify = list[0]        # save the part containing the parameter to extract    
+            list.remove(list[-1])           # keep only the first part in the list
+            line_content = list[0].split(" ")  # splitting the first part to help isolating the parameter to extract and modify
+
+            clean_list(line_content, str())  # remove all elements of the list which are void strings : at the end, the list contains only the value of the parameter
+
+            value_param = line_content[1]
+            newline = part_to_modify.replace(value_param,value)+append_to_keep    # modify the value and rewrite the line with the modified value of the parameter
+            lines[index] = newline
+               
+    f.close()
+
+    f = open(file, "w")   # open the file and modify it
+    f.writelines(lines)
+    f.close()
+         
+
+def set_config_sex(galfiles, zp, config_file="default.sex", param_file="default.param", nnw_file="default.nnw", conv_file="default.conv"):
+
+    #modify_param(config_file, "PARAMETERS_NAME", param_file)
+    #modify_param(config_file, "STARNNW_NAME", nnw_file)
+    #modify_param(config_file, "FILTER_NAME", conv_file)
+    #modify_param(config_file, "MAG_ZEROPOINT", str(zp))
+    #modify_param(config_file, "CHECKIMAGE_NAME", galfiles.segfile)
+    modify_param(config_file, "CATALOG_NAME", galfiles.sexcat)
+    
+    ## dans la version actuelle je considere que ces parametres doivent etre changes a la main par l'utilisateur
+    #modify_param("default.sex", "DETECT_THRESH", str(detect_thresh))
+    #modify_param("default.sex", "ANALYSIS_THRESH", str(analysis_thresh))
+    #modify_param("default.sex", "DETECT_MINAREA", str(detect_minarea))
+
+
+def run_sextractor(galfiles, zp, config_file="default.sex" ):
+
+    args=["sex",galfiles.infile,"-c",config_file]
+
+    p=Popen(args,stdout=PIPE)    ## Popen is included in subprocess module
+    #for line in p.stdout:
+    #    print line
+    p.wait()
+    print("Sextractor outputs : "+galfiles.segfile+" ; "+galfiles.sexcat)
+
+
+def create_mask(im,seg,obj_value,n_conta):
+    mask=im*0.0+1.
+    ## BUILDING THE MASK FILE (IF NOT PROVIDED) FOR CONTAMINATING OBJECTS
+    if n_conta>0 :
+        mask=np.where((seg>0) & (seg!=obj_value),0,mask)  ## 0 are put at the indices of mask where the condition is true (contaminating regions)
+    
+    return mask
+
+
+def sextractor_morpho(galfiles,input_mask=False):
+    ## input_mask is a boolean indicating wether the mask must be created or provided by the user, default is created
+
+    print("Building mask and masking contaminating objects")
+
+    print(galfiles.infile)
+    print(galfiles.segfile)
+    im=fits.getdata(galfiles.infile)      ## fits.getdata and fits.getheader are included in fits submodule of astropy.io
+    header=fits.getheader(galfiles.infile)
+
+    ny,nx=im.shape[0],im.shape[1]  ## dimensions de im ny=number of rows,nx=number of columns
+    
+    seg=fits.getdata(galfiles.segfile)
+
+    # READING THE OUTPUT FILE FROM SEXTRACTOR
+    
+    data_sex=np.genfromtxt(galfiles.sexcat)   ## read a tabulated file containing float data, each line stored in a vector   
+    data_sex=data_sex.transpose()  ## each column now stored into a vector 
+
+    xcc=data_sex[0]  # X_IMAGE
+    ycc=data_sex[1]  # Y_IMAGE
+    sky=data_sex[2]  # BACKGROUND
+    Flux=data_sex[3] # FLUX_ISOCOR
+    area=data_sex[4] # ISOAREA_IMAGE
+    rad=data_sex[5]  # KRON_RADIUS
+    PA=data_sex[6]   # THETA_IMAGE
+    ratio=data_sex[7] # ELONGATION =a/b
+    ellip=data_sex[8] # ELLIPTICITY
+
+    distance=np.sqrt((nx/2.-xcc)**2+(ny/2.-ycc)**2)
+    nobj=np.where(distance==min(distance))  
+    obj_value=seg[int(round(xcc[nobj])),int(round(ycc[nobj]))] 
+    xc2=xcc[nobj][0]
+    yc2=ycc[nobj][0]
+    AsurB2=ratio[nobj][0]
+    Re2=np.sqrt(area[nobj][0]/np.pi)/2.      
+    PA2=PA[nobj][0]
+    Fluxtot2=Flux[nobj][0]
+    sky2=sky[nobj][0]
+
+    ## NUMBER OF CONTAMINATING OBJECT IN THE IMAGE
+    n_conta=len(xcc)-1
+    print('N# of contaminating object: '+str(n_conta))
+
+    if input_mask == False :
+        if path.isfile(galfiles.maskfile):
+            p=Popen(["rm",galfiles.maskfile],stdout=PIPE)
+            p.wait()
+
+        mask = create_mask(im,seg,obj_value,n_conta)
+        header.set('TYPE','MASK')
+        fits.writeto(galfiles.maskfile, mask,header) ## writing fits file
+
+    mask = fits.getdata(galfiles.maskfile)
+
+    # Replace by sky in the contaminated regions
+    ### ajouter une commande qui supprime le fichier obj.fits si celui-ci existe deja
+    if path.isfile(galfiles.objfile):
+        p = Popen(["rm",galfiles.objfile],stdout=PIPE)
+        p.wait()
+
+    obj_im = im
+    sky_mean = np.mean(im[np.where(seg==0)])
+    sky_sigma = np.std(im[np.where(seg==0)])
+
+    if n_conta > 1 :
+        random_value = np.random.standard_normal((len(mask[np.where(mask==0)]),))*sky_sigma+sky_mean  ## random value following a normal distribution
+        obj_im[np.where(mask==0)] = random_value
+
+    header.set('TYPE','OBJECT')
+    header.set('XCENTER',"%8.3f" % xc2) 
+    header.set('YCENTER',"%8.3f" % yc2)
+    header.set('PA',"%8.3f" % PA2)
+    header.set('ELONG',"%8.3f" % AsurB2)  ### attention utiliser ellip n'est pas tres approprie ... 
+    header.set('RADIUS',"%8.3f" % Re2)
+    header.set('FLUXTOT',"%8.3f" % Fluxtot2)
+    
+    fits.writeto(galfiles.objfile, obj_im,header)  ## write a fits file in which the contaminating objects are replaced by sky noise
+
+
